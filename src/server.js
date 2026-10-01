@@ -311,6 +311,9 @@ async function routeRequest(request, response) {
   if (action === "click") {
     const ref = sanitizeRef(body.ref);
     const details = await elementDetails(session.page, ref);
+    if (details.href && new URL(details.href, session.page.url()).origin !== session.allowedOrigin) {
+      throw Object.assign(new Error("navigation_outside_allowed_origin"), { status: 400 });
+    }
     const classification = classifyElementAction(details);
     if (classification.requiresConfirmation) {
       const token = randomBytes(24).toString("base64url");
