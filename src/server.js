@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import { lookup } from "node:dns/promises";
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { chromium } from "playwright";
+import { autoLogin, LOGIN_FORM_WAIT_MS } from "./login.js";
 import {
   classifyElementAction,
   isForbiddenHostname,
@@ -176,35 +177,6 @@ async function performClick(session, ref) {
   return observe(session);
 }
 
-async function autoLogin(session, username, password) {
-  const page = session.page;
-  if (new URL(page.url()).origin !== session.allowedOrigin) throw new Error("login_origin_changed");
-  const passwordInput = page.locator("input[type='password']").filter({ visible: true }).first();
-  if (!(await passwordInput.isVisible().catch(() => false))) {
-    return { attempted: false, reason: "password_field_not_found" };
-  }
-  const form = passwordInput.locator("xpath=ancestor::form[1]");
-  if ((await form.count()) > 0) {
-    const action = await form.getAttribute("action");
-    if (action && new URL(action, page.url()).origin !== session.allowedOrigin) throw new Error("external_login_action_blocked");
-  }
-  const scope = (await form.count()) > 0 ? form : page.locator("body");
-  const usernameInput = scope.locator("input[autocomplete='username'],input[type='email'],input[name*='user' i],input[name*='email' i],input[type='text']").filter({ visible: true }).first();
-  if (!(await usernameInput.isVisible().catch(() => false))) {
-    return { attempted: false, reason: "username_field_not_found" };
-  }
-  await usernameInput.fill(username);
-  await passwordInput.fill(password);
-  const submit = scope.locator("button[type='submit'],input[type='submit'],button").filter({ visible: true }).first();
-  if (!(await submit.isVisible().catch(() => false))) return { attempted: false, reason: "submit_control_not_found" };
-  await submit.click({ timeout: 10_000 });
-  await settle(page);
-  return {
-    attempted: true,
-    passwordFieldVisible: await page.locator("input[type='password']").filter({ visible: true }).first().isVisible().catch(() => false),
-  };
-}
-
 async function createBrowserSession(body) {
   if (sessions.size >= MAX_SESSIONS) throw Object.assign(new Error("session_capacity_reached"), { status: 429 });
   const target = normalizePublicHttpsUrl(body.targetUrl);
@@ -271,9 +243,10 @@ async function routeRequest(request, response) {
   if (request.method === "GET" && url.pathname === "/health") {
     return json(response, 200, {
       service: "PRIME Browser Engine",
-      version: "2.0.0",
+      version: "2.0.1",
       ready: ENGINE_TOKEN.length >= 32,
       activeSessions: sessions.size,
+      loginFormWaitMs: LOGIN_FORM_WAIT_MS,
     });
   }
   if (!authorized(request)) return json(response, ENGINE_TOKEN.length >= 32 ? 401 : 503, { error: ENGINE_TOKEN.length >= 32 ? "unauthorized" : "engine_not_configured" });

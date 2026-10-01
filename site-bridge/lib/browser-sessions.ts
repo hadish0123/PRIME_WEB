@@ -294,6 +294,25 @@ export async function claimBrowserSession(input: { userId: string; sessionId: st
   }
 }
 
+export async function releaseClaimedBrowserSession(input: {
+  userId: string;
+  sessionId: string;
+}): Promise<void> {
+  const now = Date.now();
+  const result = await requireDb()
+    .prepare(
+      `UPDATE browser_sessions
+       SET status = 'pending', claimed_at = NULL, engine_session_id = NULL, updated_at = ?
+       WHERE id = ? AND user_id = ? AND status = 'claimed'
+         AND expires_at > ? AND credentials_ciphertext IS NOT NULL`,
+    )
+    .bind(now, input.sessionId, input.userId, now)
+    .run();
+  if ((result.meta.changes ?? 0) !== 1) {
+    throw new Error("نشست امن برای تلاش دوباره قابل بازیابی نیست یا منقضی شده است.");
+  }
+}
+
 export async function activateBrowserSession(input: {
   userId: string;
   sessionId: string;

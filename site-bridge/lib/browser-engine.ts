@@ -47,10 +47,10 @@ function friendlyEngineError(code: string | undefined): string {
   return errors[code ?? ""] ?? "موتور مرورگر نتوانست این عملیات را انجام دهد.";
 }
 
-async function engineRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+async function engineRequest<T>(path: string, init: RequestInit = {}, timeoutMs = 45_000): Promise<T> {
   const { baseUrl, token } = configuration();
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 45_000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(new URL(path, baseUrl), {
       ...init,
@@ -82,13 +82,19 @@ export async function startEngineSession(input: {
 }) {
   return engineRequest<{
     sessionId: string;
-    login: { attempted: boolean; reason?: string; passwordFieldVisible?: boolean };
+    login: {
+      attempted: boolean;
+      reason?: string;
+      waitedMs?: number;
+      usernameStepCompleted?: boolean;
+      passwordFieldVisible?: boolean;
+    };
     observation: BrowserObservation;
     dialogs: Array<{ type: string; message: string }>;
   }>("/v1/sessions", {
     method: "POST",
     body: JSON.stringify(input),
-  });
+  }, 80_000);
 }
 
 export async function inspectEngineSession(engineSessionId: string) {
